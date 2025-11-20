@@ -1,0 +1,16 @@
+Acest document oferă o prezentare generală a seturilor de date utilizate în proiectul
+„Sistem de asistență pentru șofer bazat pe rețele neuronale”.
+
+ 1. Tipuri de date
+
+Proiectul utilizează două tipuri principale de dataset-uri:
+
+1. **Dataset vehicule și plăcuțe de înmatriculare**
+   - plăcuțe generate sau extrase din imagini;
+   - informații sintetice despre șoferi și incidente;
+   - folosit pentru modelul de risc al vehiculului.
+
+2. **Dataset intersecții**
+   - imagini ale unor intersecții din București (Arcul de Triumf, Piața Romană, Universitate);
+   - scoruri sintetice de risc asociate fiecărei intersecții;
+   - folosit pentru modelul de clasificare a intersecțiilor.
