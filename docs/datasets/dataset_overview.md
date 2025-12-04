@@ -79,9 +79,7 @@ Proiectul utilizează două tipuri principale de dataset-uri:
 | plate                | text       | –       | plăcuța auto sintetică                               | ex: B123ABC    |
 | county               | categorial | –       | județul inventat al înmatriculării                   | {B, IS, CJ…}   |
 | total_incidents      | numeric    | număr   | numărul total de incidente                            | 0–10           |
-| mean_severity        | numeric    | scor    | severitatea medie a incidentelor                      | 1–5            |
-| last_incident_days   | numeric    | zile    | câte zile au trecut de la ultimul incident            | 0–2000         |
-| severe_ratio         | numeric    | %       | procent incidente severe                              | 0–1            |
+| mean_severity        | numeric    | scor    | severitatea medie a incidentelor                      | 1–20            |
 | risk_score           | numeric    | scor    | scor final folosit la modelul MLP                     | 0–100          |
 
 ---
