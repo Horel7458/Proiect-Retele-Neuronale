@@ -1,9 +1,9 @@
 # Etapa 4 – Arhitectura Sistemului Inteligent Autonom (SIA)
 **Disciplina:** Rețele Neuronale  
 **Universitatea:** Universitatea POLITEHNICA din București – FIIR  
-**Student:** *[Nume Prenume]*  
+**Student:** *[Petre Horia]*  
 **Grupa:** *[632AB]*  
-**Repo GitHub:** *[link]*  
+**Repo GitHub:** *[https://github.com/Horel7458/Proiect-Retele-Neuronale.git]*  
 **Data:** *[04-12-2025]*  
 
 ---
