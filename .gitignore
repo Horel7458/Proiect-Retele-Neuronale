@@ -1,1 +1,27 @@
-generarenumere/
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+
+# Virtual environments
+.venv/
+.venv*/
+venv/
+env/
+
+# VS Code
+.vscode/
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Build / packaging artifacts
+build/
+dist/
+*.spec
+
+# Project-specific caches / builds
+generarenumere/__pycache__/
+generarenumere/build/

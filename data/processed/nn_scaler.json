@@ -1,0 +1,17 @@
+{
+  "feature_cols": [
+    "acc_intersection",
+    "acc_vehicle",
+    "county_score"
+  ],
+  "min": {
+    "acc_intersection": 2.0,
+    "acc_vehicle": 0.0,
+    "county_score": 1.0
+  },
+  "max": {
+    "acc_intersection": 25.0,
+    "acc_vehicle": 9.0,
+    "county_score": 7.5
+  }
+}

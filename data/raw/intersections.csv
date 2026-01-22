@@ -1,13 +1,13 @@
 intersection,interval_label,time_range,accidents
-Arcul de Triumf,Dimineata,06:30-09:30,15
-Arcul de Triumf,Pranz,12:00-14:00,2
+Arcul de Triumf,Dimineata,06:30-09:30,23
+Arcul de Triumf,Pranz,12:00-14:00,5
 Arcul de Triumf,Seara,15:30-19:00,22
 Piata Romana,Dimineata,06:30-09:30,11
-Piata Romana,Pranz,12:00-14:00,3
-Piata Romana,Seara,15:30-19:00,20
+Piata Romana,Pranz,12:00-14:00,4
+Piata Romana,Seara,15:30-19:00,23
 Piata Unirii,Dimineata,06:30-09:30,15
 Piata Unirii,Pranz,12:00-14:00,3
-Piata Unirii,Seara,15:30-19:00,18
+Piata Unirii,Seara,15:30-19:00,21
 Piata Universitatii,Dimineata,06:30-09:30,5
 Piata Universitatii,Pranz,12:00-14:00,3
-Piata Universitatii,Seara,15:30-19:00,25
+Piata Universitatii,Seara,15:30-19:00,26

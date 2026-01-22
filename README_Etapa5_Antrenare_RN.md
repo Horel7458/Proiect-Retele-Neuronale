@@ -1,197 +1,110 @@
-# 📘 README – Etapa 5: Configurarea și Antrenarea Modelului RN
+﻿# README – Etapa 5: Configurarea și Antrenarea Modelului RN
 
 **Disciplina:** Rețele Neuronale  
 **Instituție:** POLITEHNICA București – FIIR  
-**Student:** [Petre Horia]  
-**Link Repository GitHub:** [https://github.com/Horel7458/Proiect-Retele-Neuronale.git]  
-**Data predării:** [11-12-2025]
-
----
-# Etapa 5 – Antrenarea Rețelei Neuronale (RN)
-
-## 1. Scopul acestei etape
-
-În această etapă se va defini arhitectura, datele de intrare și metoda de antrenare a rețelei neuronale utilizate pentru estimarea riscului rutier.  
-Modelul neuronal va folosi informații extrase din:
-
-- numărul de înmatriculare (judetul și istoricul de accidente asociat vehiculului)
-- intersecția selectată în aplicație
-- intervalul orar curent
-- statisticile istorice de accidente pentru fiecare intersecție
-
-RN va avea ca ieșire un **scor de risc normalizat** în intervalul `[0, 1]`, utilizat ulterior în aplicație pentru a avertiza utilizatorul asupra nivelului estimat de risc.
+**Student:** Petre Horia  
+**Repository:** https://github.com/Horel7458/Proiect-Retele-Neuronale.git  
+**Data:** 20.01.2026
 
 ---
 
-## 2. Structura rețelei neuronale (RN)
+## 1. Scopul etapei
 
-În această etapă se va utiliza o rețea neuronală de tip **MLP (Multi-Layer Perceptron)**, într-o configurație simplă, potrivită pentru problema abordată.
+În această etapă am configurat și antrenat o Rețea Neuronală (RN) care estimează un **scor de risc rutier** în intervalul $[0,1]$ (problemă de **regresie**).
 
-### **2.1 Arhitectura propusă**
+Features (intrări):
 
-- **Intrări (3–4 features)**:
-  - `accidente_intersectie` – număr de accidente din intersecția + intervalul selectat
-  - `accidente_vehicul` – numărul de accidente asociat vehiculului
-  - `scor_judet` – scor statistic al județului (medie de accidente pe județ)
-  
-- **Rețea MLP** (fără cod momentan):
-  - Layer 1: Fully Connected (4 → 16 neuroni)
-  - Activare: ReLU
-  - Layer 2: Fully Connected (16 → 8 neuroni)
-  - Activare: ReLU
-  - Layer final: Fully Connected (8 → 1 neuron)
-  - Activare: Sigmoid (pentru ieșire între 0 și 1)
+- `accidente_intersectie` – accidente în intersecția selectată + interval orar
+- `accidente_vehicul` – accidente asociate vehiculului (număr de înmatriculare)
+- `scor_judet` – scor statistic al județului
 
-### **2.2 Tipul de rețea**
-- Rețea **feed-forward**, fără memorie (nu este recurrentă)
-- Potrivită pentru probleme de **regresie** (estimarea unui scor numeric)
+Ieșirea $[0,1]$ este folosită în UI și mapată în categorii LOW / MEDIUM / HIGH.
 
 ---
 
-## 3. Date utilizate pentru antrenare
+## 2. Dataset și preprocesare
 
-### **3.1 Structura datasetului**
+Surse de date:
 
-Modelul folosește în antrenare un set de date derivat din:
+- `data/raw/plates_export.csv`
+- `data/raw/intersections.csv`
+- `data/processed/stats_by_judet.csv`
 
-- `plates_export.csv`  
-  → oferă `accidente_vehicul` și codul de județ  
+Dataset final pentru RN:
 
-- `stats_by_judet.csv`  
-  → oferă `scor_judet` pentru fiecare județ  
+- `data/processed/nn_dataset.csv` (generat de `src/preprocessing/dataset_builder.py`)
+- features: `accidente_intersectie`, `accidente_vehicul`, `scor_judet`
+- label: `label_risk` (euristic, în $[0,1]$)
 
-- `intersections.csv`  
-  → oferă `accidente_intersectie` pe intersecție + interval orar  
-
-### **3.2 Formatul final al datasetului pentru RN**
-
-Fiecare rând va avea forma:
-
-| feature | descriere |
-|--------|-----------|
-| accident_intersectie | nr. accidente în intersecția X la intervalul Y |
-| accident_vehicul | nr. accidente alocate acelui număr de înmatriculare |
-| scor_judet | scorul istoric al județului din prefixul numărului |
-| label | risc combinat (0-1), calculat după o formulă euristică inițială |
-
-### **3.3 Normalizarea datelor**
-Toate feature-urile numerice vor fi normalizate în `[0, 1]` pentru stabilitatea antrenării.
+Notă: `label_risk` este derivat euristic din aceleași 3 features, deci performanța mare indică învățarea unei funcții construite, nu neapărat predictivitate pe accidente reale.
 
 ---
 
-## 4. Metodologie antrenare RN
+## 3. Model + antrenare
 
-> **Această secțiune NU conține încă cod**, deoarece antrenarea se va realiza într-o etapă viitoare.
+Model: MLP (PyTorch), 3 → 16 → 8 → 1, activări ReLU, ieșire Sigmoid.
 
-### 4.1 Etapele planificate ale antrenării:
+Implementare antrenare: `src/neural_network/train_nn.py`.
 
-1. **Împărțirea datasetului**
+Setări (baseline):
 
-   - 70% antrenare  
-   - 15% validare  
-   - 15% test  
-
-2. **Funcția de pierdere (Loss Function)**  
-   - Recomandată: **MSE (Mean Squared Error)** pentru regresie
-
-3. **Optimizator**  
-   - `Adam` cu learning rate între `0.001` și `0.01`
-
-4. **Număr epoci**  
-   - 50–200 epoci, în funcție de convergența loss-ului
-
-5. **Evalure model**  
-   - MSE pe setul de test  
-   - Erori medii pe fiecare tip de scenariu:
-     - risc scăzut  
-     - risc mediu  
-     - risc ridicat  
+- split: 70% train / 15% val / 15% test (seed=42)
+- loss: MSE
+- optimizer: Adam
+- epochs: 120
+- batch size: 64
 
 ---
 
-## 5. Integrarea RN în aplicație
+## 4. Artefacte generate
 
-După finalizarea antrenării:
-
-1. Modelul va fi exportat (`model.pth` sau `.h5`)
-2. Interfața va încărca modelul la pornire
-3. La fiecare calcul de risc:
-   - se colectează cele 3–4 feature-uri
-   - se normalizează la `[0, 1]`
-   - se trec prin RN
-   - rezultatul este afișat utilizatorului ca:
-     - risc numeric
-     - categorie risc (low, medium, high)
+- model: `data/processed/model.pth`
+- scaler: `data/processed/nn_scaler.json`
+- (opțional) curba train/val: `data/processed/train_curve.png`
 
 ---
 
-## 6. Limitări și pași următori
+## 5. Rezultate (baseline)
 
-### **Limitări curente**
-- Modelul nu este încă antrenat
-- Nu există rezultate cuantitative
-- Formarea datasetului poate necesita extindere pentru robustețe
+Evaluare realizată cu `tools/eval_model.py`.
 
-### **Pași următori**
-- Implementarea scriptului de generare dataset pentru RN  
-- Implementarea codului de antrenare  
-- Analiza metricilor și îmbunătățirea arhitecturii  
-- Integrarea modelului în interfață
+Dimensiuni split: Train 664 / Val 142 / Test 142.
+
+| Split | MSE | MAE | RMSE | R² |
+|------:|-----:|-----:|------:|-----:|
+| Train | 0.00002966 | 0.003497 | 0.005446 | 0.999266 |
+| Val   | 0.00002835 | 0.003417 | 0.005324 | 0.999295 |
+| Test  | 0.00007933 | 0.004085 | 0.008907 | 0.998147 |
+
+Praguri categorii în UI:
+
+- LOW: scor < 0.40
+- MEDIUM: 0.40 ≤ scor < 0.70
+- HIGH: scor ≥ 0.70
+
+Pe test set, nu apar schimbări de categorie (confusion matrix perfect diagonal): LOW 66 / MEDIUM 65 / HIGH 11.
 
 ---
 
-## 7. Concluzii
+## 6. Instrucțiuni de rulare (Windows / PowerShell)
 
-Această etapă definește cadrul necesar pentru introducerea unui model neuronal predictiv în aplicație.  
-Rețeaua neuronală MLP aleasă este potrivită pentru complexitatea proiectului, iar datele existente permit construirea unui model funcțional după generarea datasetului și antrenarea acestuia.
+Recomandat Python 3.12:
 
-Rezultatele finale vor fi adăugate după efectuarea antrenării în Etapa următoare.
+```powershell
+py -3.12 -m venv .venv
+./.venv/Scripts/python.exe -m pip install -r requirements.txt
 
-## 8. Structura proiectului
+./.venv/Scripts/python.exe src/preprocessing/dataset_builder.py
+./.venv/Scripts/python.exe src/neural_network/train_nn.py
+./.venv/Scripts/python.exe tools/eval_model.py
+```
 
-Proiectul *Proiect retele neuronale* este organizat modular, conform cerințelor
-de laborator, astfel încât fiecare etapă (achiziție date, preprocesare, antrenare RN)
-să fie separată logic și ușor de întreținut.
+Notă portabilitate: `src/neural_network/train_nn.py` folosește acum path-uri relative la rădăcina proiectului (detectată automat prin folderul `data/`), deci poate rula indiferent unde a fost clonat repository-ul.
 
-Structura actuală a proiectului este:
+---
 
-Proiect-Rețele-Neuronale/
-│
-├── data/
-│   ├── raw/
-│   │   ├── plates_export.csv          # numere + accidente vehicul
-│   │   ├── intersections.csv          # accidente pe intersecții + intervale
-│   │   └── intervals.csv              # definirea intervalelor orare
-│   │
-│   ├── processed/
-│   │   └── stats_by_judet.csv         # scoruri medii de risc pe județ
-│   │
-│   ├── train/                         # pentru antrenarea RN (viitor)
-│   ├── test/                          # pentru testarea RN (viitor)
-│   └── validation/                    # pentru validare RN (viitor)
-│
-├── docs/
-│   ├── PROIECTLARN.pptx               # prezentarea proiectului
-│   ├── state_machine.png               # diagrama FSM
-│   │
-│   ├── datasets/
-│   │   ├── dataset_overview.md
-│   │   ├── dataset_overview.txt
-│   │   └── README_Etapa4_Arhitectura_SIA_03.12.2025.md
-│
-├── src/
-│   ├── data_acquisition/
-│   │   ├── baza_date.py               # crearea bazei de date
-│   │   ├── export_csv.py              # export către CSV
-│   │   ├── update_accidents.py        # incrementarea accidentelor
-│   │   ├── update_plate.py            # actualizare număr înmatriculare
-│   │   └── vezi_baza.py               # vizualizare structuri CSV/DB
-│   │
-│   ├── preprocessing/                 # pregătirea datelor pentru RN (viitor)
-│   │
-│   ├── neural_network/                # arhitectura + training RN (viitor)
-│
-├── README.md                          # documentația principală
-└── requirements.txt                   # dependențele proiectului
+## 7. Pași următori
 
-
+- experimente/optimizare hiperparametri + analiză erori (Etapa 6)
+- extindere feature set + redefinire label spre o țintă mai realistă
+- îmbunătățirea portabilității (eliminare path-uri absolute din unele fișiere)
