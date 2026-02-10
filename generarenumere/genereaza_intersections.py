@@ -1,8 +1,9 @@
 import pandas as pd
 import random
-import os
+from pathlib import Path
 
-OUTPUT_PATH = r"D:\Proiect retele neuronale\data\raw\intersections.csv"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+OUTPUT_PATH = REPO_ROOT / "data" / "raw" / "intersections.csv"
 
 intersections = [
     "Arcul de Triumf",
@@ -31,7 +32,7 @@ for intersection in intersections:
 df = pd.DataFrame(rows)
 
 # Creeaza folderul daca nu exista
-os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 df.to_csv(OUTPUT_PATH, index=False)
 print(f"Fisier generat: {OUTPUT_PATH}")

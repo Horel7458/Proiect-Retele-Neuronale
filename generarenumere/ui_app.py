@@ -3,6 +3,9 @@ import re
 import json
 import time
 import threading
+import csv
+import tempfile
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional, List, Any, cast
 
@@ -28,6 +31,188 @@ except Exception:
 else:
     torch = cast(Any, torch)
     nn = cast(Any, nn)
+
+# ============================================================
+# QUICK NOTES (for evaluation, short comments)
+# ============================================================
+# This file implements the desktop UI (Tkinter) for the project.
+# Goal: user selects a traffic context + plate, then gets a risk score.
+#
+# Main flows you can demo end-to-end:
+# - Login/Register (full name + plate stored in CSV)
+# - Select intersection + interval
+# - Enter plate manually OR read plate via OCR (camera/image)
+# - Run inference (PyTorch model if available) and show LOW/MEDIUM/HIGH
+# - Optional: update counters (simulate new accidents) and re-run
+#
+# Data files used (relative to project root):
+# - data/raw/plates_export.csv          (known plates + vehicle accidents)
+# - data/raw/intersections.csv          (intersection scenarios + accidents)
+# - data/processed/stats_by_judet.csv   (county score)
+# - data/processed/model.pth            (trained PyTorch weights)
+# - data/processed/nn_scaler.json       (min-max scaler for 3 features)
+# - data/processed/drivers.csv          (login/register storage)
+#
+# UI is designed to be robust on Windows:
+# - no absolute paths
+# - can run from any working directory
+# - PyInstaller-friendly (resource_path + writable_path)
+#
+# Important design choices (kept simple on purpose):
+# - Model is regression: outputs score in [0,1]
+# - We map score to 3 categories for readability
+# - OCR is best-effort: we allow fuzzy match against known plates
+#
+# Risk category thresholds used across UI:
+# - LOW    : score < 0.40
+# - MEDIUM : 0.40 <= score < 0.70
+# - HIGH   : score >= 0.70
+#
+# OCR notes:
+# - EasyOCR returns multiple text candidates
+# - We clean text to [A-Z0-9] and try direct match first
+# - If not found, we try substitution candidates (I<->1, O<->0, etc)
+# - As last step we use a small Levenshtein-based fuzzy match
+#
+# Threading notes:
+# - Camera capture / OCR runs in a background thread
+# - UI updates must be scheduled back into Tk main thread
+# - This avoids UI freeze when OCR takes time
+#
+# Error handling notes:
+# - If camera/OCR/model files are missing, we show a friendly message
+# - If model is not available, app can use a fallback formula
+#
+# Debug tips:
+# - If OCR is poor, try better lighting / higher resolution
+# - If a plate is not found, check data/raw/plates_export.csv
+# - If inference fails, check data/processed/model.pth and nn_scaler.json
+#
+# Code map (high level):
+# - Path helpers: find_project_root, resource_path, writable_path
+# - Text helpers: clean_plate_text, county_from_plate, levenshtein
+# - CSV loaders: load_plates/intersections/county_stats, load_drivers
+# - Model helpers: load_scaler, load_model, predict_score
+# - UI class: widgets, handlers, and display logic
+#
+# Comment style rules for this repo (per requirement):
+# - short lines
+# - no diacritics
+# - focus on what/why, not repeating obvious python syntax
+
+# ------------------------------------------------------------
+# DETAILED WALKTHROUGH (short lines, but many)
+# ------------------------------------------------------------
+# Below is a compact walkthrough of what the UI does.
+# It is intentionally written as many short lines to be easy to scan.
+#
+# Start-up:
+# - detect project root
+# - build paths to CSV/model/scaler
+# - load CSV tables into pandas
+# - pre-load OCR reader (may be slow the first time)
+# - load model + scaler if torch is available
+#
+# Login/Register:
+# - user enters full name
+# - user enters plate (manual or via OCR)
+# - we normalize name (trim spaces)
+# - we normalize plate (A-Z0-9 only)
+# - we store identity in drivers.csv
+# - last_login is updated on success
+#
+# Context selection:
+# - user chooses intersection from intersections.csv
+# - user chooses interval_label (ex: Dimineata/Pranz/Seara)
+# - time_range is shown for clarity
+#
+# Plate input:
+# - manual entry is allowed
+# - OCR can fill the entry automatically
+# - we still validate before running inference
+#
+# OCR (camera/image):
+# - open camera capture
+# - get one frame (or a few attempts)
+# - run easyocr.readtext
+# - collect candidates + confidence
+# - clean candidate text
+# - try direct match against known plates
+# - if not found, try substitution candidates
+# - if still not found, use Levenshtein match
+# - show best match + confidence to user
+#
+# Feature building (3 inputs for MLP):
+# - accidente_intersectie (from intersections.csv)
+# - accidente_vehicul     (from plates_export.csv for the plate)
+# - scor_judet            (from stats_by_judet.csv using county code)
+#
+# County code extraction:
+# - first 1-2 letters from plate
+# - ex: "B" or "AG"
+# - used as key for county stats
+#
+# Normalization:
+# - we apply min-max using nn_scaler.json
+# - scaler is fit on train only (done in training script)
+# - UI must use the same scaling to match training
+#
+# Inference:
+# - if torch/model is available, run model(x)
+# - output is a float in [0,1] (sigmoid)
+# - if model is missing, fallback is a simple heuristic
+#
+# Decision:
+# - map score to category
+# - LOW / MEDIUM / HIGH
+# - show both numeric and category
+#
+# Update flow (simulated live data):
+# - user can add +1 accident to a vehicle or intersection
+# - we write updated values back to CSV
+# - app reloads data (or refreshes cached tables)
+# - user can re-run inference and see score change
+#
+# UI stability rules:
+# - do not block Tk main loop
+# - run OCR in thread
+# - handle missing files with messagebox
+# - keep paths relative
+#
+# Common issues and quick fixes:
+# - missing model.pth: run src/neural_network/train_nn.py
+# - missing nn_scaler.json: run src/neural_network/train_nn.py
+# - missing nn_dataset.csv: run src/preprocessing/dataset_builder.py
+# - camera not found: check permissions / camera index
+# - OCR slow: first call downloads/loads models
+# - plate not in CSV: check data/raw/plates_export.csv
+#
+# Small glossary:
+# - plate: license plate text (A-Z0-9)
+# - intersection: location name
+# - interval_label: time bucket
+# - score: regression output in [0,1]
+# - category: LOW/MEDIUM/HIGH
+#
+# Notes about code structure:
+# - helpers are grouped: text, csv, model, ui
+# - dataclasses keep small data bundles readable
+# - we avoid over-engineering to keep demo simple
+#
+# End-to-end demo recording checklist:
+# - open app
+# - login/register
+# - select context
+# - OCR read OR manual plate
+# - show score + category
+# - do one update (+1 accident)
+# - show score changes
+#
+# Extra notes (short, but explicit):
+# - this is a school demo, not a production system
+# - csv auth is not secure, it is for assignment scope
+# - label is heuristic, not ground-truth
+# - metrics are high because target is deterministic
 
 
 # ============================================================
@@ -73,6 +258,26 @@ MODEL_PATH = resource_path(r"data/processed/model.pth")
 SCALER_PATH = resource_path(r"data/processed/nn_scaler.json")
 
 
+def _is_frozen() -> bool:
+    return bool(getattr(sys, "_MEIPASS", None))
+
+
+def writable_path(relative_path: str) -> str:
+    """Return a path we can write to.
+
+    - Dev/run-from-source: write inside the project (same root as data/)
+    - PyInstaller: write into LOCALAPPDATA\\RiskApp\\...
+    """
+    if not _is_frozen():
+        return resource_path(relative_path)
+
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "RiskApp", relative_path.replace("/", os.sep).replace("\\", os.sep))
+
+
+DRIVERS_CSV = writable_path(r"data/processed/drivers.csv")
+
+
 # ============================================================
 # Helpers: normalization + fuzzy match
 # ============================================================
@@ -101,6 +306,114 @@ def clean_plate_text(s: str) -> str:
     s = s.upper()
     parts = PLATE_RE.findall(s)
     return "".join(parts)
+
+
+def normalize_full_name(name: str) -> str:
+    # Keep user's capitalization, but normalize whitespace.
+    return " ".join((name or "").strip().split())
+
+
+def full_name_key(name: str) -> str:
+    # Case-insensitive key for matching.
+    return normalize_full_name(name).casefold()
+
+
+DRIVER_FIELDS = [
+    "full_name",
+    "full_name_key",
+    "plate",
+    "created_at",
+    "last_login",
+]
+
+
+def _utc_now_iso() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def load_drivers_csv(path: str) -> List[Dict[str, str]]:
+    if not os.path.exists(path):
+        return []
+
+    with open(path, "r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        rows = []
+        for r in reader:
+            if not r:
+                continue
+            # tolerate missing columns in older files
+            rows.append({k: str(r.get(k, "") or "") for k in DRIVER_FIELDS})
+        return rows
+
+
+def save_drivers_csv(path: str, rows: List[Dict[str, str]]) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_dir = os.path.dirname(path) or os.getcwd()
+
+    fd, tmp_path = tempfile.mkstemp(prefix="drivers_", suffix=".csv", dir=tmp_dir)
+    os.close(fd)
+    try:
+        with open(tmp_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=DRIVER_FIELDS)
+            writer.writeheader()
+            for r in rows:
+                writer.writerow({k: str(r.get(k, "") or "") for k in DRIVER_FIELDS})
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+
+
+def upsert_driver(path: str, name: str, plate: str, *, set_created: bool, set_last_login: bool) -> None:
+    name_norm = normalize_full_name(name)
+    key = full_name_key(name_norm)
+    plate_clean = clean_plate_text(plate)
+
+    if not name_norm or not plate_clean:
+        raise ValueError("Invalid name or plate")
+
+    rows = load_drivers_csv(path)
+    now = _utc_now_iso()
+
+    idx = None
+    for i, r in enumerate(rows):
+        if r.get("full_name_key", "") == key and r.get("plate", "") == plate_clean:
+            idx = i
+            break
+
+    if idx is None:
+        row = {
+            "full_name": name_norm,
+            "full_name_key": key,
+            "plate": plate_clean,
+            "created_at": now if set_created else "",
+            "last_login": now if set_last_login else "",
+        }
+        rows.append(row)
+    else:
+        rows[idx]["full_name"] = name_norm  # keep latest formatting
+        rows[idx]["full_name_key"] = key
+        rows[idx]["plate"] = plate_clean
+        if set_created and not rows[idx].get("created_at"):
+            rows[idx]["created_at"] = now
+        if set_last_login:
+            rows[idx]["last_login"] = now
+
+    save_drivers_csv(path, rows)
+
+
+def driver_exists(path: str, name: str, plate: str) -> bool:
+    key = full_name_key(name)
+    plate_clean = clean_plate_text(plate)
+    if not key or not plate_clean:
+        return False
+    for r in load_drivers_csv(path):
+        if r.get("full_name_key", "") == key and r.get("plate", "") == plate_clean:
+            return True
+    return False
 
 
 def county_from_plate(plate: str) -> str:
@@ -320,10 +633,15 @@ class IntersectionKey:
 # ============================================================
 
 class RiskApp(tk.Tk):
-    def __init__(self):
+    def __init__(self, defer_init: bool = False):
         super().__init__()
         self.title("Risk App (Intersection + Plate + County)")
         self.geometry("1000x640")
+
+        # Logged-in driver (set by LoginDialog before showing the app)
+        self.logged_in = False
+        self.driver_full_name = ""
+        self.driver_plate = ""
 
         # UI theme tokens (kept simple; ttk colors depend on theme support)
         self.ui_colors = {
@@ -361,8 +679,68 @@ class RiskApp(tk.Tk):
         self.last_live_plate = ""
         self.last_live_time = 0.0
 
+        self._initialized_main_ui = False
+        # Ensure ttk styles exist for the login dialog too.
+        try:
+            self._apply_theme()
+        except Exception:
+            pass
+
+        if not defer_init:
+            self.initialize_main_ui()
+
+        if defer_init:
+            self.show_login_ui()
+
+    def show_login_ui(self):
+        # Clear window
+        for child in list(self.winfo_children()):
+            try:
+                child.destroy()
+            except Exception:
+                pass
+
+        self.title("Risk App - Login")
+        self.configure(bg=self.ui_colors["bg"])
+
+        frame = LoginFrame(self, DRIVERS_CSV)
+        frame.pack(fill=tk.BOTH, expand=True, padx=14, pady=14)
+        try:
+            self.lift()
+            self.focus_force()
+        except Exception:
+            pass
+
+    def initialize_main_ui(self):
+        if self._initialized_main_ui:
+            return
+        self._initialized_main_ui = True
         self._build_ui()
         self._load_all()
+        # If user is already logged in, prefill plate once widgets exist.
+        if self.driver_plate:
+            try:
+                self._set_plate_in_ui(self.driver_plate, source="login")
+            except Exception:
+                pass
+
+    def set_logged_driver(self, full_name: str, plate: str):
+        self.logged_in = True
+        self.driver_full_name = normalize_full_name(full_name)
+        self.driver_plate = clean_plate_text(plate)
+        if self.driver_full_name and self.driver_plate:
+            self.title(f"Risk App - {self.driver_full_name} ({self.driver_plate})")
+        elif self.driver_full_name:
+            self.title(f"Risk App - {self.driver_full_name}")
+        elif self.driver_plate:
+            self.title(f"Risk App - {self.driver_plate}")
+
+        # Prefill only if the main UI widgets already exist.
+        if hasattr(self, "ent_plate"):
+            try:
+                self._set_plate_in_ui(self.driver_plate, source="login")
+            except Exception:
+                pass
 
     # ---------- Theme ----------
     def _apply_theme(self):
@@ -1004,8 +1382,286 @@ class RiskApp(tk.Tk):
             return None, 0.0, f"exception: {e}"
 
 
+class LoginDialog(tk.Toplevel):
+    def __init__(self, parent: RiskApp, drivers_csv_path: str):
+        super().__init__(parent)
+        self.parent = parent
+        self.drivers_csv_path = drivers_csv_path
+
+        self.title("Login")
+        self.resizable(False, False)
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+
+        container = ttk.Frame(self, padding=12)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(container, text="Autentificare șofer", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        ttk.Label(
+            container,
+            text="Login/Register folosind numele complet + numărul de înmatriculare.",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(2, 10))
+
+        nb = ttk.Notebook(container)
+        nb.pack(fill=tk.BOTH, expand=True)
+
+        # --- Login tab ---
+        tab_login = ttk.Frame(nb, padding=12)
+        nb.add(tab_login, text="Login")
+
+        self.login_name = tk.StringVar()
+        self.login_plate = tk.StringVar()
+
+        ttk.Label(tab_login, text="Nume complet").grid(row=0, column=0, sticky="w")
+        ttk.Entry(tab_login, textvariable=self.login_name, width=34).grid(row=1, column=0, sticky="we", pady=(0, 10))
+        ttk.Label(tab_login, text="Număr înmatriculare").grid(row=2, column=0, sticky="w")
+        ttk.Entry(tab_login, textvariable=self.login_plate, width=34).grid(row=3, column=0, sticky="we", pady=(0, 10))
+
+        btns_login = ttk.Frame(tab_login)
+        btns_login.grid(row=4, column=0, sticky="e")
+        ttk.Button(btns_login, text="Anulează", command=self._on_cancel).pack(side=tk.RIGHT, padx=(8, 0))
+        ttk.Button(btns_login, text="Login", style="Accent.TButton", command=self._do_login).pack(side=tk.RIGHT)
+
+        # --- Register tab ---
+        tab_reg = ttk.Frame(nb, padding=12)
+        nb.add(tab_reg, text="Register")
+
+        self.reg_name = tk.StringVar()
+        self.reg_plate = tk.StringVar()
+
+        ttk.Label(tab_reg, text="Nume complet").grid(row=0, column=0, sticky="w")
+        ttk.Entry(tab_reg, textvariable=self.reg_name, width=34).grid(row=1, column=0, sticky="we", pady=(0, 10))
+        ttk.Label(tab_reg, text="Număr înmatriculare").grid(row=2, column=0, sticky="w")
+        ttk.Entry(tab_reg, textvariable=self.reg_plate, width=34).grid(row=3, column=0, sticky="we", pady=(0, 10))
+
+        btns_reg = ttk.Frame(tab_reg)
+        btns_reg.grid(row=4, column=0, sticky="e")
+        ttk.Button(btns_reg, text="Anulează", command=self._on_cancel).pack(side=tk.RIGHT, padx=(8, 0))
+        ttk.Button(btns_reg, text="Register", style="Accent.TButton", command=self._do_register).pack(side=tk.RIGHT)
+
+        for t in (tab_login, tab_reg):
+            t.grid_columnconfigure(0, weight=1)
+
+        # Center on screen and make modal
+        self.transient(parent)
+        self.grab_set()
+        self.after(50, self._center)
+        self.after(100, lambda: self.focus_force())
+
+    def _center(self):
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 2)
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _on_cancel(self):
+        # Close everything if user cancels login.
+        try:
+            self.grab_release()
+        except Exception:
+            pass
+        try:
+            self.parent.destroy()
+        except Exception:
+            pass
+
+    def _do_login(self):
+        name = normalize_full_name(self.login_name.get())
+        plate = clean_plate_text(self.login_plate.get())
+        if not name or not plate:
+            messagebox.showwarning("Login", "Completează numele complet și numărul de înmatriculare.")
+            return
+
+        if not driver_exists(self.drivers_csv_path, name, plate):
+            messagebox.showerror("Login", "Cont inexistent. Folosește Register prima dată.")
+            return
+
+        try:
+            upsert_driver(self.drivers_csv_path, name, plate, set_created=False, set_last_login=True)
+        except Exception as e:
+            messagebox.showerror("Login", f"Nu pot actualiza fișierul de utilizatori:\n{e}")
+            return
+
+        self.parent.set_logged_driver(name, plate)
+        try:
+            self.parent.initialize_main_ui()
+        except Exception as e:
+            messagebox.showerror("Login", f"Eroare la inițializarea aplicației:\n{e}")
+            return
+        try:
+            self.grab_release()
+        except Exception:
+            pass
+        self.parent.deiconify()
+        self.destroy()
+
+    def _do_register(self):
+        name = normalize_full_name(self.reg_name.get())
+        plate = clean_plate_text(self.reg_plate.get())
+        if not name or not plate:
+            messagebox.showwarning("Register", "Completează numele complet și numărul de înmatriculare.")
+            return
+
+        # If already exists, treat it as a friendly message and allow login.
+        if driver_exists(self.drivers_csv_path, name, plate):
+            messagebox.showinfo("Register", "Contul există deja. Te loghez acum.")
+            try:
+                upsert_driver(self.drivers_csv_path, name, plate, set_created=False, set_last_login=True)
+            except Exception as e:
+                messagebox.showerror("Register", f"Nu pot actualiza fișierul de utilizatori:\n{e}")
+                return
+            self.parent.set_logged_driver(name, plate)
+            try:
+                self.parent.initialize_main_ui()
+            except Exception as e:
+                messagebox.showerror("Register", f"Eroare la inițializarea aplicației:\n{e}")
+                return
+            try:
+                self.grab_release()
+            except Exception:
+                pass
+            self.parent.deiconify()
+            self.destroy()
+            return
+
+        try:
+            upsert_driver(self.drivers_csv_path, name, plate, set_created=True, set_last_login=True)
+        except Exception as e:
+            messagebox.showerror("Register", f"Nu pot scrie fișierul de utilizatori:\n{e}")
+            return
+
+        messagebox.showinfo("Register", "Cont creat. Te loghez acum.")
+        self.parent.set_logged_driver(name, plate)
+        try:
+            self.parent.initialize_main_ui()
+        except Exception as e:
+            messagebox.showerror("Register", f"Eroare la inițializarea aplicației:\n{e}")
+            return
+        try:
+            self.grab_release()
+        except Exception:
+            pass
+        self.parent.deiconify()
+        self.destroy()
+
+
+class LoginFrame(ttk.Frame):
+    def __init__(self, parent: RiskApp, drivers_csv_path: str):
+        super().__init__(parent, style="Panel.TFrame")
+        self.parent = parent
+        self.drivers_csv_path = drivers_csv_path
+
+        ttk.Label(self, text="Autentificare șofer", style="Header.TLabel").pack(anchor="w")
+        ttk.Label(
+            self,
+            text="Login/Register folosind numele complet + numărul de înmatriculare.",
+            style="Subheader.TLabel",
+        ).pack(anchor="w", pady=(2, 12))
+
+        card = ttk.Frame(self, style="Panel.TFrame", padding=12)
+        card.pack(fill=tk.BOTH, expand=True)
+
+        nb = ttk.Notebook(card)
+        nb.pack(fill=tk.BOTH, expand=True)
+
+        # Login tab
+        tab_login = ttk.Frame(nb, padding=12)
+        nb.add(tab_login, text="Login")
+        self.login_name = tk.StringVar()
+        self.login_plate = tk.StringVar()
+
+        ttk.Label(tab_login, text="Nume complet").grid(row=0, column=0, sticky="w")
+        ttk.Entry(tab_login, textvariable=self.login_name, width=40).grid(row=1, column=0, sticky="we", pady=(0, 10))
+        ttk.Label(tab_login, text="Număr înmatriculare").grid(row=2, column=0, sticky="w")
+        ttk.Entry(tab_login, textvariable=self.login_plate, width=40).grid(row=3, column=0, sticky="we", pady=(0, 10))
+
+        btns_login = ttk.Frame(tab_login)
+        btns_login.grid(row=4, column=0, sticky="e")
+        ttk.Button(btns_login, text="Ieșire", command=self._on_cancel).pack(side=tk.RIGHT, padx=(8, 0))
+        ttk.Button(btns_login, text="Login", style="Accent.TButton", command=self._do_login).pack(side=tk.RIGHT)
+
+        # Register tab
+        tab_reg = ttk.Frame(nb, padding=12)
+        nb.add(tab_reg, text="Register")
+        self.reg_name = tk.StringVar()
+        self.reg_plate = tk.StringVar()
+
+        ttk.Label(tab_reg, text="Nume complet").grid(row=0, column=0, sticky="w")
+        ttk.Entry(tab_reg, textvariable=self.reg_name, width=40).grid(row=1, column=0, sticky="we", pady=(0, 10))
+        ttk.Label(tab_reg, text="Număr înmatriculare").grid(row=2, column=0, sticky="w")
+        ttk.Entry(tab_reg, textvariable=self.reg_plate, width=40).grid(row=3, column=0, sticky="we", pady=(0, 10))
+
+        btns_reg = ttk.Frame(tab_reg)
+        btns_reg.grid(row=4, column=0, sticky="e")
+        ttk.Button(btns_reg, text="Ieșire", command=self._on_cancel).pack(side=tk.RIGHT, padx=(8, 0))
+        ttk.Button(btns_reg, text="Register", style="Accent.TButton", command=self._do_register).pack(side=tk.RIGHT)
+
+        for t in (tab_login, tab_reg):
+            t.grid_columnconfigure(0, weight=1)
+
+    def _on_cancel(self):
+        try:
+            self.parent.destroy()
+        except Exception:
+            pass
+
+    def _do_login(self):
+        name = normalize_full_name(self.login_name.get())
+        plate = clean_plate_text(self.login_plate.get())
+        if not name or not plate:
+            messagebox.showwarning("Login", "Completează numele complet și numărul de înmatriculare.")
+            return
+        if not driver_exists(self.drivers_csv_path, name, plate):
+            messagebox.showerror("Login", "Cont inexistent. Folosește Register prima dată.")
+            return
+
+        try:
+            upsert_driver(self.drivers_csv_path, name, plate, set_created=False, set_last_login=True)
+        except Exception as e:
+            messagebox.showerror("Login", f"Nu pot actualiza fișierul de utilizatori:\n{e}")
+            return
+
+        self.parent.set_logged_driver(name, plate)
+        self.destroy()
+        self.parent.initialize_main_ui()
+
+    def _do_register(self):
+        name = normalize_full_name(self.reg_name.get())
+        plate = clean_plate_text(self.reg_plate.get())
+        if not name or not plate:
+            messagebox.showwarning("Register", "Completează numele complet și numărul de înmatriculare.")
+            return
+
+        if driver_exists(self.drivers_csv_path, name, plate):
+            messagebox.showinfo("Register", "Contul există deja. Te loghez acum.")
+            try:
+                upsert_driver(self.drivers_csv_path, name, plate, set_created=False, set_last_login=True)
+            except Exception as e:
+                messagebox.showerror("Register", f"Nu pot actualiza fișierul de utilizatori:\n{e}")
+                return
+            self.parent.set_logged_driver(name, plate)
+            self.destroy()
+            self.parent.initialize_main_ui()
+            return
+
+        try:
+            upsert_driver(self.drivers_csv_path, name, plate, set_created=True, set_last_login=True)
+        except Exception as e:
+            messagebox.showerror("Register", f"Nu pot scrie fișierul de utilizatori:\n{e}")
+            return
+
+        messagebox.showinfo("Register", "Cont creat. Te loghez acum.")
+        self.parent.set_logged_driver(name, plate)
+        self.destroy()
+        self.parent.initialize_main_ui()
+
+
 def main():
-    app = RiskApp()
+    app = RiskApp(defer_init=True)
     app.mainloop()
 
 

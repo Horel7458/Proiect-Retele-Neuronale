@@ -43,6 +43,19 @@ OUT_PLOT = os.path.join(PROJECT_ROOT, "data", "processed", "train_curve.png")
 
 SEED = 42
 
+# Training summary (short comments):
+# - reads data/processed/nn_dataset.csv
+# - builds X (3 features) and y (label_risk)
+# - splits into train/val/test with fixed seed
+# - fits min-max scaler on train only
+# - trains a small MLP regressor (sigmoid output)
+# - saves model.pth and nn_scaler.json into data/processed/
+# - optionally saves a training curve plot
+
+# Notes:
+# - this is a tiny dataset, so training is fast on CPU
+# - we keep hyperparams simple (baseline is best here)
+
 
 # =========================
 # Utils
@@ -140,6 +153,7 @@ def main():
         print(f"[ERROR] Missing: {CSV_PATH}")
         return
 
+    # Load final dataset built by src/preprocessing/dataset_builder.py
     df = pd.read_csv(CSV_PATH)
     df.columns = [c.strip().lower() for c in df.columns]
 
@@ -153,7 +167,9 @@ def main():
 
     ensure_columns(df, feature_cols + [col_label])
 
-    # numeric cleanup
+    # Numeric cleanup:
+    # - coerce invalid strings to NaN
+    # - drop incomplete rows (keeps training stable)
     for c in feature_cols + [col_label]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.dropna(subset=feature_cols + [col_label]).reset_index(drop=True)
@@ -161,7 +177,8 @@ def main():
     X = df[feature_cols].astype(float).values
     y = df[col_label].astype(float).values
 
-    # split
+    # Split indices (seeded) so results are reproducible.
+    # Ratios: 70/15/15 (train/val/test)
     n = len(df)
     train_idx, val_idx, test_idx = train_val_test_split_idx(n, val_ratio=0.15, test_ratio=0.15)
 
@@ -169,7 +186,8 @@ def main():
     X_val, y_val = X[val_idx], y[val_idx]
     X_test, y_test = X[test_idx], y[test_idx]
 
-    # scaler fit on train only
+    # Fit scaler only on train, then apply to val/test.
+    # This avoids leaking info from val/test into train normalization.
     mn, mx = minmax_fit(X_train)
     X_train_n = minmax_transform(X_train, mn, mx)
     X_val_n = minmax_transform(X_val, mn, mx)
@@ -208,7 +226,10 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=256, shuffle=False)
     test_loader = DataLoader(test_ds, batch_size=256, shuffle=False)
 
-    # model
+    # Model/training:
+    # - small MLP for tabular features
+    # - MSE loss (regression)
+    # - Adam optimizer
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[INFO] Device: {device}")
 
@@ -222,6 +243,7 @@ def main():
     train_curve = []
     val_curve = []
 
+    # Training loop (kept simple, no early stopping needed on this dataset)
     EPOCHS = 120
     for epoch in range(1, EPOCHS + 1):
         model.train()

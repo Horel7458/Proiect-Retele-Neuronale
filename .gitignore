@@ -25,3 +25,16 @@ dist/
 # Project-specific caches / builds
 generarenumere/__pycache__/
 generarenumere/build/
+
+# Logs / runtime outputs
+logs/
+*.log
+
+# IDEs
+.idea/
+**/.idea/
+
+# Office temp / lock files
+~$*.pptx
+~$*.docx
+~$*.xlsx

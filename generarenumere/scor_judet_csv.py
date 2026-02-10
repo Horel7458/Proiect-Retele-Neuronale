@@ -1,6 +1,8 @@
 import pandas as pd
+from pathlib import Path
 
-CSV_PATH = r"D:\Proiect retele neuronale\data\raw\plates_export.csv"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CSV_PATH = REPO_ROOT / "data" / "raw" / "plates_export.csv"
 
 def get_county_score(county_code):
     county_code = county_code.upper()

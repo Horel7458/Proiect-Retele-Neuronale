@@ -2,7 +2,7 @@
 
 **Disciplina:** Rețele Neuronale  
 **Instituție:** POLITEHNICA București – FIIR  
-**Student:** Petre Horia Ioan  
+**Student:** Petre Horia  
 **Repository:** https://github.com/Horel7458/Proiect-Retele-Neuronale.git  
 **Data:** 20.01.2026
 
@@ -91,17 +91,12 @@ Pe test set apar 2 schimbări de categorie (din clasa MEDIUM): 1 → LOW și 1 �
 Recomandat Python 3.12:
 
 ```powershell
-cd (git rev-parse --show-toplevel)
-
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+./.venv/Scripts/python.exe -m pip install -r requirements.txt
 
-# alternativ (dacă folosiți un venv deja existent în repo)
-.\.venv-5\Scripts\python.exe -m pip install -r requirements.txt
-
-.\.venv\Scripts\python.exe src\preprocessing\dataset_builder.py
-.\.venv\Scripts\python.exe src\neural_network\train_nn.py
-.\.venv\Scripts\python.exe tools\eval_model.py
+./.venv/Scripts/python.exe src/preprocessing/dataset_builder.py
+./.venv/Scripts/python.exe src/neural_network/train_nn.py
+./.venv/Scripts/python.exe tools/eval_model.py
 ```
 
 Notă portabilitate: `src/neural_network/train_nn.py` folosește acum path-uri relative la rădăcina proiectului (detectată automat prin folderul `data/`), deci poate rula indiferent unde a fost clonat repository-ul.

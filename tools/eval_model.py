@@ -8,6 +8,26 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
+# ------------------------------
+# Notes (short, human comments)
+# ------------------------------
+# This script evaluates the trained regression model on a test split.
+# Output:
+# - MSE / MAE / RMSE / R2 for train/val/test
+# - binned confusion matrix (LOW/MEDIUM/HIGH) for interpretation
+# - top 5 absolute errors with context columns
+#
+# Assumptions:
+# - dataset exists at data/processed/nn_dataset.csv
+# - model exists at data/processed/model.pth
+# - features are the 3 numeric columns used in training
+# - split ratios match training (70/15/15) with seed 42
+#
+# Why confusion matrix in a regression project:
+# - evaluator wants an easy-to-read error summary
+# - we discretize score using fixed thresholds
+# - matrix shows if predictions cross category boundaries
+
 
 CSV_PATH = os.path.join("data", "processed", "nn_dataset.csv")
 MODEL_PATH = os.path.join("data", "processed", "model.pth")
@@ -99,6 +119,8 @@ def main():
     if not os.path.exists(MODEL_PATH):
         raise FileNotFoundError(f"Missing model: {MODEL_PATH}")
 
+    # Load dataset and clean numeric fields.
+    # We evaluate on the same split strategy as training.
     df = pd.read_csv(CSV_PATH)
     df.columns = [c.strip().lower() for c in df.columns]
 
@@ -123,6 +145,7 @@ def main():
     X_val_n = minmax_transform(X_val, mn, mx)
     X_test_n = minmax_transform(X_test, mn, mx)
 
+    # Load trained model weights (saved by src/neural_network/train_nn.py)
     state = torch.load(MODEL_PATH, map_location="cpu")
     model = RiskMLP(in_dim=3)
     if isinstance(state, dict) and "model_state" in state:
@@ -139,13 +162,15 @@ def main():
     m_val = metrics(y_val, pred_val)
     m_test = metrics(y_test, pred_test)
 
-    # Binned confusion matrix on test
+    # Confusion matrix (binned):
+    # We turn regression score into 3 categories for easy interpretation.
     true_cat = np.array([risk_cat(v) for v in y_test])
     pred_cat = np.array([risk_cat(v) for v in pred_test])
     classes = ["LOW", "MEDIUM", "HIGH"]
     cm = pd.crosstab(pd.Series(true_cat, name="true"), pd.Series(pred_cat, name="pred"), dropna=False)
     cm = cm.reindex(index=classes, columns=classes, fill_value=0)
 
+    # Top errors help explain where the model deviates most.
     abs_err = np.abs(y_test - pred_test)
     top_idx_local = np.argsort(-abs_err)[:5]
     rows = df.iloc[test_idx[top_idx_local]].copy()

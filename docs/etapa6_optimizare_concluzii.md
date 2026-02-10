@@ -2,7 +2,7 @@
 
 **Disciplina:** Rețele Neuronale  
 **Instituție:** POLITEHNICA București – FIIR  
-**Student:** Petre Horia Ioan  
+**Student:** Petre Horia  
 **Link Repository GitHub:** https://github.com/Horel7458/Proiect-Retele-Neuronale.git  
 **Data:** 20.01.2026
 
@@ -217,30 +217,21 @@ Direcții viitoare:
 
 ```powershell
 cd (git rev-parse --show-toplevel)
-.\.venv\Scripts\python.exe tools\eval_model.py
-
-# alternativ (dacă folosiți un venv deja existent în repo)
-.\.venv-5\Scripts\python.exe tools\eval_model.py
+./.venv/Scripts/python.exe tools/eval_model.py
 ```
 
 ### Experimente optimizare (tabel comparativ)
 
 ```powershell
 cd (git rev-parse --show-toplevel)
-.\.venv\Scripts\python.exe tools\run_optimization_experiments.py
-
-# alternativ
-.\.venv-5\Scripts\python.exe tools\run_optimization_experiments.py
+./.venv/Scripts/python.exe tools/run_optimization_experiments.py
 ```
 
 ### Learning curve
 
 ```powershell
 cd (git rev-parse --show-toplevel)
-.\.venv\Scripts\python.exe src\neural_network\learning_curve.py
-
-# alternativ
-.\.venv-5\Scripts\python.exe src\neural_network\learning_curve.py
+./.venv/Scripts/python.exe src/neural_network/learning_curve.py
 ```
 
 ### Rulare UI
@@ -248,9 +239,5 @@ cd (git rev-parse --show-toplevel)
 Conform README.md (UI principal):
 
 ```powershell
-cd (git rev-parse --show-toplevel)
-.\.venv\Scripts\python.exe generarenumere\ui_app.py
-
-# alternativ
-.\.venv-5\Scripts\python.exe generarenumere\ui_app.py
+./.venv/Scripts/python.exe generarenumere/ui_app.py
 ```

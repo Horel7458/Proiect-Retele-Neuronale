@@ -3,9 +3,11 @@ import easyocr
 import re
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 # Calea către CSV-ul cu numere + accidente
-CSV_PATH = r"D:\Proiect retele neuronale\data\raw\plates_export.csv"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CSV_PATH = REPO_ROOT / "data" / "raw" / "plates_export.csv"
 
 
 def clean_plate_text(text: str) -> str:

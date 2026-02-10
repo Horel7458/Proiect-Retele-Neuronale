@@ -169,9 +169,9 @@ State machine separă clar pașii aplicației (selectare context → preprocesar
 
 ```
 Input: 3 features (accidente_intersectie, accidente_vehicul, scor_judet)
-	→ Linear(3→16) + ReLU
-	→ Linear(16→8) + ReLU
-	→ Linear(8→1) + Sigmoid
+  → Linear(3→16) + ReLU
+  → Linear(16→8) + ReLU
+  → Linear(8→1) + Sigmoid
 Output: scor risc în [0,1]
 ```
 

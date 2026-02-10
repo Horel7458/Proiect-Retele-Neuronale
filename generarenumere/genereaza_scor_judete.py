@@ -2,9 +2,9 @@ import pandas as pd
 import re
 from pathlib import Path
 
-# adaptează dacă e nevoie, dar la tine era exact așa:
-CSV_INPUT = Path(r"D:\Proiect retele neuronale\data\raw\plates_export.csv")
-CSV_OUTPUT = Path(r"D:\Proiect retele neuronale\data\processed\stats_by_judet.csv")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CSV_INPUT = REPO_ROOT / "data" / "raw" / "plates_export.csv"
+CSV_OUTPUT = REPO_ROOT / "data" / "processed" / "stats_by_judet.csv"
 
 
 def extract_county_code(plate: str) -> str | None:

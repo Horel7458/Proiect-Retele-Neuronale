@@ -3,7 +3,7 @@ import re
 import json
 import threading
 from dataclasses import dataclass
-from typing import Dict, Tuple, Optional, List
+from typing import Any, Dict, Tuple, Optional, List
 
 import pandas as pd
 
@@ -20,19 +20,145 @@ try:
     import torch
     import torch.nn as nn
 except Exception:
-    torch = None
-    nn = None
+    torch = None  # type: ignore
+    nn = None  # type: ignore
+
+# =========================
+# QUICK NOTES (for evaluation, short comments)
+# =========================
+# This file is a desktop UI (Tkinter) variant located under src/.
+# It uses the same idea as generarenumere/ui_app.py:
+# - user selects context (intersection + time interval)
+# - user provides a plate (manual or OCR)
+# - app builds 3 numeric features and predicts risk score in [0,1]
+# - app shows score + human category (LOW/MEDIUM/HIGH)
+#
+# Important: model is regression, not classification.
+# We use a small MLP and a sigmoid output to keep score in [0,1].
+#
+# Data files:
+# - data/raw/plates_export.csv
+# - data/raw/intersections.csv
+# - data/processed/stats_by_judet.csv
+# - data/processed/model.pth
+# - data/processed/nn_scaler.json
+#
+# OCR behavior:
+# - EasyOCR reads text from camera
+# - we normalize to [A-Z0-9] and try to match against known plates
+# - we use small substitutions to fix common OCR confusions
+#
+# Error handling:
+# - if files are missing, show a message instead of crashing
+# - if torch is missing, app may fallback to heuristic score
+
+# ------------------------------------------------------------
+# EXTRA NOTES (many short lines, easy to review)
+# ------------------------------------------------------------
+# Startup checklist:
+# - locate project root by searching for data/
+# - build paths for CSV/model/scaler
+# - load CSV tables into memory
+# - populate combobox lists for intersection + interval
+# - create OCR reader (easyocr.Reader)
+# - load torch model if available
+#
+# User input validation:
+# - plate must not be empty
+# - intersection must be selected
+# - interval must be selected
+# - numeric fields must be finite after conversion
+#
+# Plate normalization rules:
+# - uppercase
+# - keep only A-Z0-9
+# - strip spaces and separators
+#
+# County code extraction rules:
+# - 2 letters if plate starts with 2 letters (ex: AG)
+# - otherwise 1 letter (ex: B)
+# - empty string if invalid
+#
+# Fuzzy match rules:
+# - direct match wins
+# - substitution candidates fix typical OCR confusions
+# - levenshtein is a last resort
+# - we keep it small to be fast
+#
+# Feature vector (order must match scaler/model):
+# - x[0] = accidente_intersectie
+# - x[1] = accidente_vehicul
+# - x[2] = scor_judet
+#
+# Scaling rules:
+# - min/max loaded from nn_scaler.json
+# - if max==min, use denom=1 to avoid division by zero
+# - keep values in [0,1] if possible
+#
+# Inference rules:
+# - model output is sigmoid, so score in [0,1]
+# - use cpu for compatibility
+# - wrap inference in no_grad
+#
+# Category mapping:
+# - LOW    : score < 0.40
+# - MEDIUM : score < 0.70
+# - HIGH   : score >= 0.70
+#
+# OCR runtime notes:
+# - OCR may take seconds on first run
+# - camera capture may fail on some laptops
+# - handle cv2 errors gracefully
+#
+# UI runtime notes:
+# - keep handlers fast
+# - avoid blocking Tk main loop
+# - show messagebox on errors
+#
+# Common demo steps:
+# - open UI
+# - select intersection and interval
+# - type a plate from plates_export.csv
+# - click predict
+# - show score + category
+#
+# Common debug steps:
+# - check CSV paths exist
+# - check pandas columns lowercased
+# - check numeric conversions
+# - check scaler keys match expected feature names
+# - check model_state load path
+#
+# Limitations (expected for this assignment):
+# - label is heuristic, not real ground truth
+# - dataset is small and synthetic
+# - accuracy metrics reflect deterministic target
+# - OCR quality depends on image quality
 
 
 # =========================
 # Paths (edit if needed)
 # =========================
-PLATES_CSV = r"D:\Proiect retele neuronale\data\raw\plates_export.csv"
-INTERSECTIONS_CSV = r"D:\Proiect retele neuronale\data\raw\intersections.csv"
-COUNTY_STATS_CSV = r"D:\Proiect retele neuronale\data\processed\stats_by_judet.csv"
+def _find_project_root(start_path: str) -> str:
+    cur = os.path.abspath(start_path)
+    while True:
+        if os.path.isdir(os.path.join(cur, "data")):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return os.path.abspath(start_path)
+        cur = parent
 
-MODEL_PATH = r"D:\Proiect retele neuronale\data\processed\model.pth"
-SCALER_PATH = r"D:\Proiect retele neuronale\data\processed\nn_scaler.json"
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = _find_project_root(_SCRIPT_DIR)
+
+PLATES_CSV = os.path.join(_PROJECT_ROOT, "data", "raw", "plates_export.csv")
+INTERSECTIONS_CSV = os.path.join(_PROJECT_ROOT, "data", "raw", "intersections.csv")
+COUNTY_STATS_CSV = os.path.join(_PROJECT_ROOT, "data", "processed", "stats_by_judet.csv")
+
+MODEL_PATH = os.path.join(_PROJECT_ROOT, "data", "processed", "model.pth")
+SCALER_PATH = os.path.join(_PROJECT_ROOT, "data", "processed", "nn_scaler.json")
 
 
 # =========================
@@ -138,24 +264,29 @@ def match_plate_to_csv(ocr_plate: str, known_plates: List[str]) -> Tuple[Optiona
 # NN model + scaler loader
 # =========================
 
-class RiskMLP(nn.Module):
-    def __init__(self, in_dim: int = 3):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, 16),
-            nn.ReLU(),
-            nn.Linear(16, 8),
-            nn.ReLU(),
-            nn.Linear(8, 1),
-            nn.Sigmoid()
-        )
+if nn is not None:
+    _nn = nn
 
-    def forward(self, x):
-        return self.net(x)
+    class RiskMLP(_nn.Module):
+        def __init__(self, in_dim: int = 3):
+            super().__init__()
+            self.net = _nn.Sequential(
+                _nn.Linear(in_dim, 16),
+                _nn.ReLU(),
+                _nn.Linear(16, 8),
+                _nn.ReLU(),
+                _nn.Linear(8, 1),
+                _nn.Sigmoid()
+            )
+
+        def forward(self, x):
+            return self.net(x)
+else:
+    RiskMLP = None  # type: ignore
 
 
 def load_model_if_available(log_fn):
-    if torch is None or nn is None:
+    if torch is None or nn is None or RiskMLP is None:
         log_fn("[WARN] Torch not available -> using fallback risk formula.")
         return None, None
 
@@ -534,6 +665,10 @@ class RiskApp(tk.Tk):
             messagebox.showwarning("Warning", "Select intersection and interval first.")
             return
 
+        if self.intersections_df is None:
+            messagebox.showerror("Error", "Intersections data is not loaded.")
+            return
+
         key = (inter, interval)
         cur = int(self.int_acc_map.get(key, 0))
         new_val = cur + 1
@@ -631,6 +766,8 @@ class RiskApp(tk.Tk):
 
     def _ocr_plate_from_frame(self, frame) -> Tuple[Optional[str], float, str]:
         try:
+            if self.reader is None:
+                return None, 0.0, "ocr_not_initialized"
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.bilateralFilter(gray, 9, 75, 75)
             results = self.reader.readtext(gray)

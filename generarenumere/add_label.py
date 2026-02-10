@@ -1,9 +1,11 @@
 import pandas as pd
 import math
+from pathlib import Path
 
-IN_CSV = r"D:\Proiect retele neuronale\data\processed\nn_dataset.csv"
-COUNTY_STATS_CSV = r"D:\Proiect retele neuronale\data\processed\stats_by_judet.csv"
-OUT_CSV = r"D:\Proiect retele neuronale\data\processed\nn_dataset_labeled.csv"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+IN_CSV = REPO_ROOT / "data" / "processed" / "nn_dataset.csv"
+COUNTY_STATS_CSV = REPO_ROOT / "data" / "processed" / "stats_by_judet.csv"
+OUT_CSV = REPO_ROOT / "data" / "processed" / "nn_dataset_labeled.csv"
 
 # weights (adjust if you want)
 W_INT = 0.55

@@ -37,6 +37,8 @@ def normalize_01(series: pd.Series) -> pd.Series:
 
 def main():
     # --- robust paths ---
+    # We detect the project root so this script can be run from anywhere.
+    # This keeps paths relative and portable (important on Windows).
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = find_project_root(script_dir)
 
@@ -51,6 +53,8 @@ def main():
     output_csv = os.path.join(project_root, "data", "processed", "nn_dataset.csv")
 
     # --- sanity checks ---
+    # Fail fast if any required CSV is missing.
+    # This prevents silent creation of an empty/broken dataset.
     missing = []
     for p in [plates_csv, intersections_csv, county_stats_csv]:
         if not os.path.isfile(p):
@@ -64,11 +68,15 @@ def main():
         return
 
     # 1) Read CSVs
+    # plates_export.csv: known plates + accident counters per vehicle
+    # intersections.csv: scenarios with accident counters per intersection
+    # stats_by_judet.csv: county-level risk score (aggregated)
     plates = pd.read_csv(plates_csv)
     county = pd.read_csv(county_stats_csv)
     inters = pd.read_csv(intersections_csv)
 
     # 2) Standardize column names
+    # Keep everything lowercase to avoid issues with CSV header casing.
     plates.columns = [c.strip().lower() for c in plates.columns]
     county.columns = [c.strip().lower() for c in county.columns]
     inters.columns = [c.strip().lower() for c in inters.columns]
@@ -79,12 +87,14 @@ def main():
     # inters: intersection, interval_label, time_range, accidents
 
     # 3) Extract county code from plate
+    # Example: "B123ABC" -> "B", "AG44XYZ" -> "AG".
     plates["county_code"] = plates["plate"].apply(extract_county_code)
 
     county["county_code"] = county["county_code"].astype(str).str.strip().str.upper()
     plates["county_code"] = plates["county_code"].astype(str).str.strip().str.upper()
 
     # 4) Merge county score
+    # Join plates with county score so we get 3 numeric features later.
     merged = plates.merge(
         county[["county_code", "scor_mediu_accidente"]],
         on="county_code",
@@ -96,6 +106,8 @@ def main():
     merged["scor_mediu_accidente"] = merged["scor_mediu_accidente"].fillna(global_mean)
 
     # 5) Cross join with intersection scenarios
+    # Cross join generates final rows: plates x scenarios.
+    # In this repo: 79 plates * 12 scenarios = 948 rows.
     inters_small = inters[["intersection", "interval_label", "time_range", "accidents"]].copy()
     inters_small = inters_small.rename(columns={"accidents": "accidente_intersectie"})
 
@@ -110,6 +122,8 @@ def main():
     })
 
     # 7) Normalize components and build heuristic label in [0,1]
+    # Label is a simple weighted sum of normalized components.
+    # This is a demo label (heuristic), not real ground-truth.
     nn["acc_inter_01"] = normalize_01(nn["accidente_intersectie"])
     nn["acc_veh_01"] = normalize_01(nn["accidente_vehicul"])
     nn["scor_judet_01"] = normalize_01(nn["scor_judet"])

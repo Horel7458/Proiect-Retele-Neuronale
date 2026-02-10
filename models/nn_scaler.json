@@ -5,12 +5,12 @@
     "county_score"
   ],
   "min": {
-    "acc_intersection": 3.0,
+    "acc_intersection": 2.0,
     "acc_vehicle": 0.0,
     "county_score": 1.0
   },
   "max": {
-    "acc_intersection": 26.0,
+    "acc_intersection": 25.0,
     "acc_vehicle": 9.0,
     "county_score": 7.5
   }
