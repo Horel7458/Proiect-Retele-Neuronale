@@ -670,6 +670,7 @@ Aș începe cu o definire mai strictă a „ground-truth”-ului (ce înseamnă 
 5. LeCun, Y., Bengio, Y., Hinton, G., 2015. Deep learning. *Nature*, 521, 436–444. https://doi.org/10.1038/nature14539
 6. Hornik, K., Stinchcombe, M., White, H., 1989. Multilayer feedforward networks are universal approximators. *Neural Networks*, 2(5), 359–366. https://doi.org/10.1016/0893-6080(89)90020-8
 7. He, K., Zhang, X., Ren, S., Sun, J., 2016. Deep Residual Learning for Image Recognition. *CVPR 2016*. https://doi.org/10.1109/CVPR.2016.90
+8. Laboratoare și cursuri – disciplina „Rețele Neuronale” (UPB FIIR), 2025–2026.
 
 **Exemple format:**
 - Abaza, B., 2025. AI-Driven Dynamic Covariance for ROS 2 Mobile Robot Localization. Sensors, 25, 3026. https://doi.org/10.3390/s25103026
